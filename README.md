@@ -9,6 +9,7 @@ Use the table below to open and run the project notebooks. If you are using **Go
 | Notebook | Description | Launch in Cloud |
 | :--- | :--- | :---: |
 | **`Project_PoC.ipynb`** | Proof of Concept | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/sergeydutt/06-623_Project/blob/main/Project_PoC.ipynb) |
+| **`Project_Prop.ipynb`** | Proposal | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/sergeydutt/06-623_Project/blob/main/Project_Prop.ipynb) |
 
 ## How to Keep Main Updated
 
