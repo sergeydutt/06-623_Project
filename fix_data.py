@@ -1,16 +1,44 @@
 import numpy as np
 import pandas as pd
+from scipy.interpolate import interp1d
 from scipy.signal import find_peaks
 
 def load_and_center_data(filepath = 'Pendulum.xlsx', sheet_name = 'Clear'):
     """
     Loads pendulum data and centers it around 0.0 rad
+    Equilibrium is originally offset and drifts overtime
+    This function counteracts the drift by subtracting an interpolated envolope of peak-trough midpoints
     """
-    df = pd.read_excel(filepath, sheet_name = sheet_name, usecols = ['Time', 'Angle'])
+    df = pd.read_excel(filepath, sheet_name=sheet_name, usecols=['Time', 'Angle'])
 
-    equilibrium_offset = (df['Angle'].max() + df['Angle'].min()) / 2
-    df['Angle'] = df['Angle'] - equilibrium_offset
+    angles = df['Angle'].values
+    times = df['Time'].values
 
+    # find local maxima (peaks) and local minima (troughs)
+    peaks, _ = find_peaks(angles)
+    troughs, _ = find_peaks(-angles)
+
+    # combine and sort extrema coordinates by time
+    t_extrema = np.concatenate([times[peaks], times[troughs]])
+    a_extrema = np.concatenate([angles[peaks], angles[troughs]])
+
+    sort_idx = np.argsort(t_extrema)
+    t_extrema = t_extrema[sort_idx]
+    a_extrema = a_extrema[sort_idx]
+
+    # calculate midpoints between adjacent peaks and troughs
+    t_mid = (t_extrema[:-1] + t_extrema[1:]) / 2.0
+    baseline_mid = (a_extrema[:-1] + a_extrema[1:]) / 2.0
+
+    # interpolate baseline across full time array (extrapolate ends if needed)
+    baseline_func = interp1d(
+        t_mid, baseline_mid, kind='linear', fill_value='extrapolate'
+    )
+    equilibrium_drift = baseline_func(times)
+
+    # subtract baseline shift
+    df['Angle'] = df['Angle'] - equilibrium_drift
+    
     return df
 
 def get_random_subset(data, num_os):
