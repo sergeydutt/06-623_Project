@@ -8,7 +8,7 @@ def load_and_center_data(filepath = 'Pendulum.xlsx', sheet_name = 'Clear'):
     """
     df = pd.read_excel(filepath, sheet_name = sheet_name, usecols = ['Time', 'Angle'])
 
-    equilibrium_offset = (df['Angle'].mac() + df['Angle'].min()) / 2
+    equilibrium_offset = (df['Angle'].max() + df['Angle'].min()) / 2
     df['Angle'] = df['Angle'] - equilibrium_offset
 
     return df
