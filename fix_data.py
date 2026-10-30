@@ -72,6 +72,6 @@ def get_random_subset(data, num_os):
     subset = data.iloc[start : end + 1].copy()
     t_0 = data.loc[start, 'Time']
     t_n = data.loc[end, 'Time']
-    print(f't_0 = {t_0:.1f}s , t_n = {t_n:.1f}s, n = {len(subset)} points')
+    # print(f't_0 = {t_0:.1f}s , t_n = {t_n:.1f}s, n = {len(subset)} points')
 
     return subset
