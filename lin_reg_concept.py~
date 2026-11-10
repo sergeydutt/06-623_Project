@@ -1,0 +1,58 @@
+import jax
+import jax.numpy as jnp
+import matplotlib.pyplot as plt
+from scipy.interpolate import CubicSpline
+
+from fix_data import get_random_subset, load_and_center_data
+
+df = load_and_center_data('Pendulum.xlsx')
+subset_df = get_random_subset(df, 15)
+subset_df['Time'] = subset_df['Time'] - subset_df['Time'].iloc[0]
+
+t_data = jnp.array(subset_df['Time'].values)
+theta_data = jnp.array(subset_df['Angle'].values)
+
+# fit continuous function to data
+#poly_coeffs = jnp.polyfit(t_data, theta_data, deg = 3)
+
+cs = CubicSpline(jnp.array(t_data), jnp.array(theta_data))
+
+def theta_func(t):
+    """
+    Continuous function of theta across time
+    """
+    return jnp.polyval(jnp.array(cs.c[:, 0}), t)
+
+# first and second derivatives (as functions of t)
+theta_dot_func = jax.grad(theta_func)
+theta_ddot_func = jax.grad(theta_dot_func)
+
+# vectorize over all time points
+get_theta_dot = jax.vmap(theta_dot_func)
+get_theta_ddot = jax.vmap(theta_ddot_func)
+
+# get values at all time points
+theta_dot = get_theta_dot(t_data)
+theta_ddot = get_theta_ddot(t_data)
+
+# linear regression Xa = Y
+Y = theta_ddot
+X = jnp.column_stack([-theta_dot, -jnp.sin(theta_data)])
+
+a = jnp.linalg.solve(X.T @ X, X.T @ Y)
+a1 = float(a[0])
+a2 = float(a[1])
+
+# model: theta'' + a1*theta' + a2*sin(theta) = 0
+# a1 = c / m*L^2, a2 = g/L, g = 9.81
+g = 9.81 # m / s^2
+L_data = 1.615 # m
+m_data = 1 # kg
+
+L_model = g / a2
+L_err = jnp.abs(L_model - L_data) 
+C_model = a1 * m_data * (L_model**2)
+
+print(f'L_model: {L_model:.3f} m')
+print(f'L_model error: {float(L_err):.3f} m')
+print(f'Air-Resistance Coef (C): {C_model:.3f}')
