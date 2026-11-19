@@ -1,0 +1,278 @@
+import jax
+jax.config.update("jax_enable_x64", True)
+import jax.numpy as jnp # for autograd
+from jax import jit # for fast computing
+
+import numpy as np # use for everything else except derivatives
+import scipy.signal as signal
+import matplotlib.pyplot as plt
+from scipy.optimize import minimize_scalar
+
+from fix_data import get_random_subset, load_and_center_data
+
+df = load_and_center_data("Pendulum.xlsx")
+total_peaks = 10
+subset_df = get_random_subset(df, total_peaks) 
+
+original_t_start = subset_df["Time"].iloc[0]
+original_t_end = subset_df["Time"].iloc[-1]
+
+print(f"Original Subset Time Window: {original_t_start:.1f} s to {original_t_end:.1f} s\
+")
+
+def get_t_and_theta(t, theta):
+    # start subset at t = 0                                                             
+    subset_df[t] = subset_df[t] - subset_df[t].iloc[0]
+
+    x = np.array(subset_df[t].values)
+    y = np.array(subset_df[theta].values)
+
+    print(f"Number of Data Points {len(x):.1f}")
+
+    return x, y
+
+t_data, theta_data = get_t_and_theta(t = "Time", theta = "Angle")
+
+def f_series(t_data, theta_data,
+             K_max = 10, tol = 0.01,
+             search_for_freq_opt=True, freq_opt=None):
+
+    peaks, _ = signal.find_peaks(theta_data)
+
+    t_diff = t_data[peaks[-1]] - t_data[peaks[0]]
+    avg_period = t_diff / (len(peaks) - 1)
+    freq_guess = 2 * np.pi / avg_period
+
+    first_peak = theta_data[peaks[0]]
+    last_peak = theta_data[peaks[-1]]
+    Lambda = np.log(first_peak / last_peak) / t_diff
+    decay = np.exp(-Lambda * t_data)
+
+    def lin_reg(f, K):
+        cols = []
+        for k in range(1, K + 1):
+            cols.append(decay * np.cos(k * f * t_data))
+            cols.append(decay * np.sin(k * f * t_data))
+
+        X = np.column_stack(cols)
+        a = np.linalg.solve(X.T @ X, X.T @ theta_data)
+        theta_model = X @ a
+        mse = np.mean((theta_data - theta_model) ** 2)
+        return a, mse
+
+    # Mode 1: Find optimal frequency                                                    
+    if search_for_freq_opt:
+        res = minimize_scalar(
+            lambda f: lin_reg(f, K_max)[1],
+            bounds=(freq_guess * 0.95, freq_guess * 1.05),
+            method="bounded",
+        )
+        freq_opt = res.x
+        print(f"Optimal Frequency is: {freq_opt:.3f}")
+        return freq_opt
+
+    # Mode 2: Fit Fourier series using freq_opt
+    for K in range(1, K_max + 1):
+        a_k, MSE = lin_reg(freq_opt, K)
+
+        if K > 1:
+            rel_improvement = (prev_MSE - MSE) / prev_MSE
+            if rel_improvement < tol:
+                break
+
+        a = a_k
+        K_total = K
+        prev_MSE = MSE
+
+    return Lambda, a, K_total
+
+freq_opt = f_series(t_data, theta_data)
+
+Lambda, a_fourier, K_total = f_series(
+    t_data = t_data,
+    theta_data = theta_data,
+    search_for_freq_opt = False,
+    freq_opt = freq_opt,
+)
+
+print(f"Number of cos/sin series in Fourier Series is k = {K_total}")
+
+a_fourier = jnp.array(a_fourier)
+def theta_func(t_m): # m data points (t_m, theta_m)                                     
+    decay_t = jnp.exp(-Lambda * t_m)
+    terms = jnp.array([
+        a_fourier[2*(k-1)] * jnp.cos(k * freq_opt * t_m) +
+        a_fourier[2*(k-1)+1] * jnp.sin(k * freq_opt * t_m)
+        for k in range(1, K_total + 1)
+    ])
+    return decay_t * jnp.sum(terms)
+
+@jit # for fast computation of jax.grad(jax.grad())                                     
+def get_derivatives(t):
+
+    dtheta_dt = jax.vmap(jax.grad(theta_func))(t)
+    d2theta_dt2 = jax.vmap(jax.grad(jax.grad(theta_func)))(t)
+
+    return dtheta_dt, d2theta_dt2
+
+theta_dot, theta_ddot = get_derivatives(t_data)
+
+# plot Fourier Series Solution                                                          
+t_plot = jnp.linspace(t_data[0], t_data[-1], 300)
+theta_plot = np.asarray(jax.vmap(theta_func)(jnp.asarray(t_plot)))
+theta_dot, theta_ddot = map(np.asarray, get_derivatives(jnp.asarray(t_data)))
+
+plt.figure(figsize=(9, 5), dpi=100)
+plt.plot(t_plot, theta_plot, label="Continuous $\\theta(t)$", color="black", linewidth=\
+2)
+plt.plot(t_data, theta_data, "ro", label="Data Points")
+plt.xlabel("Time (s)")
+plt.ylabel("Angle $\\theta$ (rad)")
+plt.title("Continuous Fourier Fit vs. Raw Data")
+plt.legend(bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0)
+plt.show()
+
+
+# linear regression againts pendulum model: Xa = Y                                      
+# physics model: x'' = -a1 * x' - a2 * sin(x), x = theta                                
+Y = theta_ddot
+X = np.column_stack([-theta_dot, -np.sin(theta_data)])
+
+a = np.linalg.solve(X.T @ X, X.T @ Y)
+a1 = float(a[0])
+a2 = float(a[1])
+
+# a1 = c / m*L^2, a2 = g/L                                                              
+g = 9.81 # m / s^2                                                                      
+m_data = 1 # kg                                                                         
+L_model = g / a2
+C_model = a1 * m_data * (L_model**2)
+
+print(f"L_model: {L_model:.3f} m")
+print(f'Air-Resistance Coef (C): {C_model:.3f}')
+
+# Residuals                                                                                
+residuals = Y - X @ a
+
+ss_res = np.sum(residuals**2)
+ss_tot = np.sum((Y - np.mean(Y))**2)
+r_squared = 1 - (ss_res / ss_tot)
+
+N, p = X.shape # N data points, p = 2 parameters                                           
+
+sigma2 = np.sum(residuals ** 2) / (N - p)
+cov_matrix = sigma2 * np.linalg.inv(X.T @ X)
+
+std_errors = np.sqrt(np.diag(cov_matrix))
+se_a1, se_a2 = std_errors[0], std_errors[1]
+
+print(f"Optimal a1: {a1:.5f} +/- {se_a1:.5f} ")
+print(f"Optimal a2: {a2:.5f} +/- {se_a2:.5f} ")
+
+# prove that uncertainties in a1 and a2 are uncorrelated                                   
+# (if noise causes error in a1, does it also cause error in a2?)                           
+cov_a1_a2 = cov_matrix[0, 1] # off diagonal: Cov(a1, a2)                                   
+corr_a1_a2 = cov_a1_a2 / (se_a1 * se_a2) # unitless Cov(a1, a2)                            
+print(f"The correlation (normalized Cov) between a1 and a2 is {corr_a1_a2:.3e}")
+
+col1, col2 = X[:, 0], X[:, 1] # columns of X matrix in Y = Xa                              
+
+# how much of the signal in col1 leaks into the signal in col2                             
+col1_norm = np.linalg.norm(col1)
+col2_norm = np.linalg.norm(col2)
+col1_col2_proj = np.dot(col1, col2) / (col1_norm * col2_norm)
+print(f"The projection of Col. 1 onto Col. 2 (from matrix X) is: {col1_col2_proj:.3e}")
+
+# this will always be zero (~1e-15)                                          
+res_norm = np.linalg.norm(residuals)
+res_col1_proj = np.dot(residuals, col1) / (res_norm * col1_norm)
+res_col2_proj = np.dot(residuals, col2) / (res_norm * col2_norm)
+print(f"The projection of residuals onto Col. 1 is: {res_col1_proj:.1e}")
+print(f"The projection of residuals onto Col. 2 is: {res_col2_proj:.1e}")
+
+# check pattern of residuals projected onto each signal
+signal_1 = a1 * col1
+signal_2 = a2 * col2
+
+def create_scatter(x_axis, y_axis, xlabel, ylabel, title):
+    plt.figure(figsize=(9, 5), dpi=100)
+    plt.scatter(x_axis, y_axis, color = "red")
+    plt.axhline(y=0, color = "black", linestyle = "dashed")
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.title(title)
+    plt.show()
+
+create_scatter(
+    x_axis = t_data,
+    y_axis = residuals,
+    xlabel = "Time (s)",
+    ylabel = "Residuals (rad/s^2)",
+    title = "Residuals vs Time",
+)
+    
+create_scatter(
+    x_axis = signal_1,
+    y_axis = signal_2,
+    xlabel = "Decaying Signal (rad/s^2)",
+    ylabel = "Restoring Signal (rad/s^2)",
+    title = "Decaying Signal vs Restoration Signal (Col1 vs Col2 in matrix X)",
+)
+
+create_scatter(
+    x_axis = signal_1,
+    y_axis = residuals,
+    xlabel = "Decaying Signal (rad/s^2)",
+    ylabel = "Residuals (rad/s^2)",
+    title = "Decaying Signal vs Residuals",
+)
+
+create_scatter(
+    x_axis = signal_2,
+    y_axis = residuals,
+    xlabel = "Restoring Signal (rad/s^2)",
+    ylabel = "Residuals (rad/s^2)",
+    title = "Restoring Signal vs Residuals",
+)
+
+proj_scalar = col1_col2_proj * col2_norm                  # Parallel component along col1 (x-coord)
+orth_scalar = col2_norm * np.sqrt(1 - col1_col2_proj**2)  # Orthogonal component (y-coord)
+angle_deg = np.degrees(np.arccos(np.clip(col1_col2_proj, -1.0, 1.0)))
+
+fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 8), dpi=110)
+
+# Top Plot: Gram-Schmidt Vector Projection ---
+ax1.quiver(0, 0, col1_norm, 0, angles="xy", scale_units="xy", scale=1,
+           color="red", width=0.006, label=rf"Length of $\mathbf{{col}}_1$ from Matrix X: {col1_norm:.2f}")
+
+ax1.quiver(0, 0, proj_scalar, orth_scalar, angles="xy", scale_units="xy", scale=1,
+           color="tab:blue", width=0.006, label=rf"Length of $\mathbf{{col}}_2$ from Matrix X: {col2_norm:.2f}")
+
+# Dashed projection lines showing the Gram-Schmidt right triangle
+# ax1.plot([proj_scalar, proj_scalar], [0, orth_scalar], "k--", linewidth=1, alpha=0.6, label="Orthogonal component")
+# ax1.plot([0, proj_scalar], [0, 0], "g:", linewidth=1.8, label=f"Parallel projection = {proj_scalar:.2f}")
+
+max_extent = max(col1_norm, col2_norm) * 1.18
+ax1.set_xlim(-max_extent * 0.25, max_extent)
+ax1.set_ylim(-max_extent * 0.15, max_extent)
+ax1.set_aspect("equal", adjustable="box")
+ax1.axhline(0, color="black", linewidth=0.8, alpha=0.4)
+ax1.axvline(0, color="black", linewidth=0.8, alpha=0.4)
+ax1.set_xlabel(r"Direction of $\mathbf{col}_1$ ($-\dot{\theta}$)")
+ax1.set_ylabel(r"Orthogonal Direction $\mathbf{e}_2$")
+ax1.set_title(rf"Gram–Schmidt Vector Geometry ($\theta_{{12}} = {angle_deg:.3f}^\circ$)")
+ax1.legend(loc="upper right", fontsize=8.5)
+ax1.grid(True, alpha=0.25)
+
+# Bottom Plot: col1 and col2 Across Time
+ax2.plot(t_data, col1, "ro-", markersize=3.5, linewidth=1, alpha=0.75, label=r"$\mathrm{col}_1 = -\dot{\theta}$ (rad/s)")
+ax2.plot(t_data, col2, "bo-", markersize=3.5, linewidth=1, alpha=0.75, label=r"$\mathrm{col}_2 = -\sin\theta$ (rad)")
+ax2.axhline(0, color="black", linestyle="dashed", linewidth=0.9, alpha=0.6)
+ax2.set_xlabel("Time (s)")
+ax2.set_ylabel("Amplitude")
+ax2.set_title(r"Signal 1 and Signal 2 Across Time")
+ax2.legend(loc="upper right", fontsize=9)
+ax2.grid(True, alpha=0.25)
+
+plt.tight_layout()
+plt.show()
