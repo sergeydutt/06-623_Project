@@ -28,15 +28,7 @@ def get_t_and_theta(t, theta):
 
     x = np.array(subset_df[t].values)
     y = np.array(subset_df[theta].values)
-Because only discrete measurements of θ
-θ are available, we first reconstruct a continuous, smooth, and differentiable representation of the trajectory. Once established, automatic differentiation (via JAX) can be applied directly to compute the time derivatives θ˙(t)
-θ˙(t) and θ¨(t)
-θ¨(t). Alternatively, one could estimate a1
-a1​ and a2
-a2​ using nonlinear least-squares optimization. However, because Eq. (8) lacks a closed-form analytical solution—and is inherently nonlinear in θ
-θ even in the undamped case (Eq. 2)—nonlinear optimization requires repeated numerical integration and good initial parameter guesses. By leveraging automatic differentiation to evaluate the derivatives directly, we bypass iterative optimization and initial guesses altogether, allowing a1
-a1​ and a2
-a2​ to be solved efficiently via standard linear regression.
+
     print(f"Number of Data Points {len(x):.1f}")
 
     return x, y
