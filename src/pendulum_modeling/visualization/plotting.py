@@ -9,16 +9,25 @@ Directly implements and extends visualizations from the project notebooks:
 - Air-resistance coefficient C errorbar curve across L (Project_Final.ipynb Cell 20).
 - Seaborn and contour error surface heatmaps (Project_PoC.ipynb Cell 30 / Project_Final.ipynb Cell 21).
 - Side-by-side comparative diagnostics.
+- Temporal generalization and overfitting check diagnostics (overfitting_check.py).
 """
 
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from pendulum_modeling.config import PLOT_STYLE, PLOTS_DIR
+from pendulum_modeling.analysis.overfitting import (
+    GeneralizationMetrics,
+    GeneralizationPlotConfig,
+    ODEParameters,
+    SimulationTrajectory,
+    TemporalGeneralizationResult,
+    TemporalSplitData,
+)
+from pendulum_modeling.config import PLOT_STYLE
 
 
 def plot_model(
@@ -27,8 +36,8 @@ def plot_model(
     model_fun,
     fit_params,
     description: str = "",
-    save_path: Optional[str] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    save_path: str | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Direct implementation of plot_model from Project_PoC.ipynb (Cell 17).
     Generates plot of model line and raw data points.
@@ -76,8 +85,8 @@ def plot_fourier_fit(
     t_plot: np.ndarray,
     theta_plot: np.ndarray,
     title: str = "Continuous Fourier Fit vs. Raw Data",
-    save_path: Optional[str] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    save_path: str | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Direct reproduction of continuous Fourier fit plot from Project_Final.ipynb (Cell 13).
     """
@@ -104,8 +113,8 @@ def plot_residuals(
     t_data: np.ndarray,
     residuals: np.ndarray,
     title: str = "Residuals vs Time",
-    save_path: Optional[str] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    save_path: str | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Direct reproduction of residual plot from Project_Final.ipynb (Cell 17).
     """
@@ -131,8 +140,8 @@ def plot_derivatives(
     t_data: np.ndarray,
     theta_dot: np.ndarray,
     theta_ddot: np.ndarray,
-    save_path: Optional[str] = None,
-) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes]]:
+    save_path: str | None = None,
+) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
     """
     Plots velocity and acceleration obtained from JAX automatic differentiation.
     """
@@ -162,13 +171,13 @@ def plot_derivatives(
 def plot_correlation_curve_2d(
     L_values: np.ndarray,
     gamma_errors: np.ndarray,
-    L_fit: Optional[float] = None,
-    gamma_err: Optional[float] = None,
+    L_fit: float | None = None,
+    gamma_err: float | None = None,
     xlabel: str = "L (m)",
     ylabel: str = "Gamma errors",
     title: str = "Correlation curve between L and gamma",
-    save_path: Optional[str] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    save_path: str | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Direct reproduction of 2D correlation plot from Project_PoC.ipynb (Cell 28).
     """
@@ -200,8 +209,8 @@ def plot_correlation_curve_3d(
     L_fit: float,
     gamma_fit: float,
     gamma_err: float,
-    save_path: Optional[str] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    save_path: str | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Direct reproduction of 3D trajectory plot from Project_PoC.ipynb (Cell 27).
     """
@@ -233,8 +242,8 @@ def plot_linear_regression_coupling(
     C_errors: np.ndarray,
     L_model: float,
     C_model: float,
-    save_path: Optional[str] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    save_path: str | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Direct reproduction of C(L) errorbar curve from Project_Final.ipynb (Cell 20).
     """
@@ -273,13 +282,13 @@ def plot_heatmap(
     y_values: np.ndarray,
     x_values: np.ndarray,
     loss_matrix: np.ndarray,
-    best_index: Tuple[int, int],
+    best_index: tuple[int, int],
     xlabel: str = "Pendulum length, L (m)",
     ylabel: str = r"Damping coefficient, $\gamma$ ($s^{-1}$)",
     cbar_label: str = r"$\log_{10}(\mathrm{SSE})$",
     title: str = "Parameter-coupling error surface",
-    save_path: Optional[str] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    save_path: str | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Direct reproduction of seaborn error surface heatmap from Project_PoC.ipynb (Cell 30)
     and Project_Final.ipynb (Cell 21).
@@ -327,11 +336,11 @@ def plot_side_by_side_correlation(
     lr_L: np.ndarray,
     lr_C: np.ndarray,
     lr_C_err: np.ndarray,
-    lr_L_opt: Optional[float] = None,
-    lr_C_opt: Optional[float] = None,
+    lr_L_opt: float | None = None,
+    lr_C_opt: float | None = None,
     title: str = "Parameter Sensitivity to Fixed Length L: Curve Fit vs. Linear Regression",
-    save_path: Optional[str] = None,
-) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes]]:
+    save_path: str | None = None,
+) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
     """
     Side-by-side comparison of parameter sensitivity across assumed L.
     Left: Curve Fit gamma(L) (PoC Cell 26/28).
@@ -382,8 +391,8 @@ def plot_side_by_side_heatmaps(
     lr_best_C: float,
     lr_best_L: float,
     title: str = "Parameter Loss Surfaces: Curve Fit vs. Linear Regression",
-    save_path: Optional[str] = None,
-) -> Tuple[plt.Figure, Tuple[plt.Axes, plt.Axes]]:
+    save_path: str | None = None,
+) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
     """
     Side-by-side heatmaps showing Curve Fit diagonal SSE valley vs Linear Regression RSS contours.
     """
@@ -428,8 +437,8 @@ def plot_side_by_side_trajectories(
     t_lr: np.ndarray,
     y_lr: np.ndarray,
     title: str = "Trajectory Overlay: Curve Fit vs. Linear Regression vs. Raw Data",
-    save_path: Optional[str] = None,
-) -> Tuple[plt.Figure, plt.Axes]:
+    save_path: str | None = None,
+) -> tuple[plt.Figure, plt.Axes]:
     """
     Overlays predictions from Curve Fit and Linear Regression on top of raw measurements.
     """
@@ -452,3 +461,182 @@ def plot_side_by_side_trajectories(
         fig.savefig(save_path, dpi=PLOT_STYLE["dpi_high"], bbox_inches="tight")
 
     return fig, ax
+
+
+def plot_temporal_generalization(
+    result: TemporalGeneralizationResult | TemporalSplitData,
+    simulation: SimulationTrajectory | None = None,
+    metrics: GeneralizationMetrics | None = None,
+    ode_params: ODEParameters | None = None,
+    config: GeneralizationPlotConfig | None = None,
+    save_path: str | None = None,
+) -> tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]:
+    """
+    Renders temporal generalization and out-of-sample forecast validation plots
+    (reproduced from overfitting_check.py, lines 215–242).
+
+    Contains strictly visualization logic. All analytical tasks (data partitioning,
+    damped Fourier series smoothing, JAX autodiff differentiation, OLS parameter
+    estimation, ODE numerical forward integration, and residual error computations)
+    are performed upstream by `pendulum_modeling.analysis.overfitting` and passed in via
+    higher-order data objects.
+
+    Figure Structure:
+    -----------------
+    - Top Subplot (ax1):
+        Trajectory overlay showing observed training points (black markers),
+        unseen out-of-sample test points (blue markers), the forward-simulated ODE curve
+        (crimson line), and a vertical dashed marker at the train/test split.
+    - Bottom Subplot (ax2):
+        Residual error curves (degrees) partitioned into in-sample training error (black)
+        and out-of-sample forecasting error (blue), displaying annotated Train/Test RMSE
+        in the legend and a reference zero line.
+
+    Parameters
+    ----------
+    result : TemporalGeneralizationResult | TemporalSplitData
+        Aggregated analysis container bundling split data, simulation trajectories,
+        ODE parameters, and metrics. Alternatively, a `TemporalSplitData` instance
+        if passing individual data objects.
+    simulation : SimulationTrajectory | None, optional
+        Required only if `result` is a `TemporalSplitData` instance.
+    metrics : GeneralizationMetrics | None, optional
+        Required only if `result` is a `TemporalSplitData` instance.
+    ode_params : ODEParameters | None, optional
+        Identified ODE parameters for formatting the legend label.
+    config : GeneralizationPlotConfig | None, optional
+        Plot configuration options (figsize, dpi, labels, title, save_path).
+    save_path : str | None, optional
+        Optional path where the generated figure will be saved. Overrides `config.save_path`.
+
+    Returns
+    -------
+    tuple[plt.Figure, tuple[plt.Axes, plt.Axes]]
+        A tuple containing the Matplotlib Figure and a tuple of the two Axes (ax1, ax2):
+        - ax1: Trajectory overlay (train points, test points, ODE curve, split line).
+        - ax2: Pointwise angular error curves in degrees with annotated RMSE values.
+    """
+    plt.close("all")
+
+    # Unpack higher-order data objects
+    if isinstance(result, TemporalGeneralizationResult):
+        split_data = result.split_data
+        sim = result.simulation
+        met = result.metrics
+        ode = result.ode_params
+    elif isinstance(result, TemporalSplitData):
+        if simulation is None or metrics is None:
+            raise ValueError(
+                "When passing a TemporalSplitData instance as the first argument, "
+                "'simulation' and 'metrics' must also be provided."
+            )
+        split_data = result
+        sim = simulation
+        met = metrics
+        ode = ode_params
+    else:
+        raise TypeError(
+            f"Expected TemporalGeneralizationResult or TemporalSplitData, got {type(result).__name__}"
+        )
+
+    cfg = config or GeneralizationPlotConfig()
+
+    # Configure legend labels and titles using metadata from higher-order objects
+    train_label = cfg.train_label or (
+        f"Train Data (Peaks 1–{split_data.train_peaks})"
+        if split_data.train_peaks is not None
+        else "Train Data"
+    )
+    test_label = cfg.test_label or (
+        f"Unseen Test Data (Peaks {split_data.train_peaks + 1}–{split_data.train_peaks + split_data.test_peaks})"
+        if split_data.train_peaks is not None and split_data.test_peaks is not None
+        else "Unseen Test Data"
+    )
+    ode_label = cfg.ode_label or (
+        ode.formatted_label() if ode is not None else "ODE Simulation"
+    )
+    title = cfg.title or (
+        f"Temporal Generalization: Fit on First {split_data.train_peaks} Peaks, Forecast Next {split_data.test_peaks} Peaks"
+        if split_data.train_peaks is not None and split_data.test_peaks is not None
+        else "Temporal Generalization: Fit vs. Forecast"
+    )
+
+    # Instantiate 2-row figure with shared x-axis and 2.2:1 height ratio matching overfitting_check.py
+    fig, (ax1, ax2) = plt.subplots(
+        2,
+        1,
+        figsize=cfg.figsize,
+        dpi=cfg.dpi,
+        sharex=True,
+        gridspec_kw={"height_ratios": [2.2, 1]},
+    )
+
+    # Top Panel: Trajectory Fit & Forecast
+    ax1.plot(
+        split_data.t_data,
+        split_data.theta_data_deg,
+        "ko",
+        markersize=3.5,
+        alpha=0.6,
+        label=train_label,
+    )
+    ax1.plot(
+        split_data.t_test,
+        split_data.theta_test_deg,
+        "bo",
+        markersize=3.5,
+        alpha=0.6,
+        label=test_label,
+    )
+    ax1.plot(
+        sim.t_sim,
+        sim.theta_sim_deg,
+        color="crimson",
+        linewidth=2,
+        label=ode_label,
+    )
+    ax1.axvline(
+        split_data.t_split,
+        color="gray",
+        linestyle="--",
+        linewidth=1.2,
+        label="Train / Test Split",
+    )
+    ax1.set_ylabel("Angle (deg)", fontsize=PLOT_STYLE["font_size"])
+    ax1.set_title(title, fontsize=PLOT_STYLE["font_size"] + 1)
+    ax1.legend(loc="upper right", fontsize=8.5)
+    ax1.grid(True, alpha=0.25)
+
+    # Bottom Panel: Residual Error Breakdown
+    ax2.plot(
+        split_data.t_data,
+        met.error_train_deg,
+        color="black",
+        linewidth=1.2,
+        label=f"Train RMSE = {met.train_rmse_deg:.3f}°",
+    )
+    ax2.plot(
+        split_data.t_test,
+        met.error_test_deg,
+        color="tab:blue",
+        linewidth=1.2,
+        label=f"Test RMSE = {met.test_rmse_deg:.3f}°",
+    )
+    ax2.axvline(split_data.t_split, color="gray", linestyle="--", linewidth=1.2)
+    ax2.axhline(0, color="k", linestyle=":", linewidth=0.9)
+    ax2.set_xlabel("Time (s)", fontsize=PLOT_STYLE["font_size"])
+    ax2.set_ylabel("Error (deg)", fontsize=PLOT_STYLE["font_size"])
+    ax2.legend(loc="upper left", fontsize=8.5)
+    ax2.grid(True, alpha=0.25)
+
+    plt.tight_layout()
+
+    out_save_path = save_path or cfg.save_path
+    if out_save_path:
+        Path(out_save_path).parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_save_path, dpi=PLOT_STYLE["dpi_high"], bbox_inches="tight")
+
+    return fig, (ax1, ax2)
+
+
+plot_overfitting_check = plot_temporal_generalization

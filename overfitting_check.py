@@ -1,15 +1,15 @@
 import jax
-jax.config.update("jax_enable_x64", True)
-import jax.numpy as jnp # for autograd
-from jax import jit # for fast computing
-
-import numpy as np # use for everything else except derivatives
-import scipy.signal as signal
+import jax.numpy as jnp  # for autograd
 import matplotlib.pyplot as plt
+import numpy as np  # use for everything else except derivatives
+from jax import jit  # for fast computing
+from scipy import signal
+from scipy.integrate import solve_ivp  # to check overfitting
 from scipy.optimize import minimize_scalar
-from scipy.integrate import solve_ivp # to check overfitting
 
 from fix_data import get_random_subset, load_and_center_data
+
+jax.config.update("jax_enable_x64", True)
 
 df = load_and_center_data("Pendulum.xlsx")
 total_peaks = 20
@@ -85,10 +85,11 @@ def f_series(t_data, theta_data,
         return freq_opt
 
     # Mode 2: Fit Fourier series using freq_opt
+    prev_MSE = None
     for K in range(1, K_max + 1):
         a_k, MSE = lin_reg(freq_opt, K)
 
-        if K > 1:
+        if K > 1 and prev_MSE is not None:
             rel_improvement = (prev_MSE - MSE) / prev_MSE
             if rel_improvement < tol:
                 break
